@@ -1,14 +1,14 @@
-from functools import lru_cache
-
 import pyglet
 from pyglet import shapes
 from pyglet.window import mouse
 
 from itertools import groupby
 from random import randint
+from functools import lru_cache
 from datetime import datetime
 from threading import Thread
 import json
+import sys
 from multiprocessing import Process
 
 from pprint import pprint
@@ -206,7 +206,7 @@ class Connect4Game:
 
 class Connect4AI:
     def __init__(self):
-        self.checking_depth = 6
+        self.checking_depth = 11  # 16.0 s
         self.transposition_tables = {}
 
     def predict(self, board):
@@ -275,7 +275,11 @@ class Connect4AI:
                 if row is None:
                     continue
 
-                state = self.minimax(game_state, {'x': action, 'y': row}, depth - 1, alpha, beta, False)
+                if str(game_state) in self.transposition_tables:
+                    state = self.transposition_tables[str(game_state)]
+                else:
+                    state = self.minimax(game_state, {'x': action, 'y': row}, depth - 1, alpha, beta, False)
+                    self.transposition_tables[str(game_state)] = state
                 max_state = max([max_state, state])
 
                 alpha = max([alpha, state])
