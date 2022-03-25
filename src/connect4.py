@@ -6,6 +6,8 @@ from itertools import groupby
 from random import randint
 from datetime import datetime
 from threading import Thread
+import json
+from multiprocessing import Process
 
 from pprint import pprint
 
@@ -53,14 +55,13 @@ class Connect4Game:
                 self.handle_user_move(x)
 
     def move(self):
-        self.game_state, current_row = Connect4Game.update_game_state(self.game_state,
-                                                                      self.picked_column,
-                                                                      self.current_player)
+        self.game_state, self.current_row = Connect4Game.update_game_state(self.game_state,
+                                                                           self.picked_column,
+                                                                           self.current_player)
 
-        print(self.picked_column, current_row)
-        if current_row is not None:
+        if self.current_row is not None:
             player_color = self.player_colors[self.current_player]
-            self.draw_circle(self.picked_column, self.game_height - current_row - 1, player_color)
+            self.draw_circle(self.picked_column, self.game_height - self.current_row - 1, player_color)
             self.current_player = self.players[self.current_player % len(self.players)]
         else:
             print('End of column')
@@ -69,7 +70,7 @@ class Connect4Game:
         if self.log:
             pprint(self.game_state)
 
-        self.game_won = self.check_for_winners(self.game_state, self.picked_column, current_row)
+        self.game_won = self.check_for_winners(self.game_state, self.picked_column, self.current_row)
 
     def handle_user_move(self, x):
         if self.game_won:
@@ -89,10 +90,14 @@ class Connect4Game:
 
         if self.game_won:
             self.winner_screen()
-        # elif self.use_ai:
-        #     game_ai = Connect4AI()
-        #     self.picked_column = game_ai.predict(self.game_state)
-        #     self.move()
+        elif self.use_ai:
+            game_ai = Connect4AI()
+            game_state = {row: self.game_state[row].copy() for row in self.game_state}
+            self.picked_column = game_ai.predict(game_state)
+            self.move()
+
+            if self.game_won:
+                self.winner_screen()
 
     @staticmethod
     def update_game_state(game_state, column, player):
@@ -198,77 +203,103 @@ class Connect4Game:
 
 class Connect4AI:
     def __init__(self):
-        self.player_number = 2
-        self.current_player = 2
-        self.game_state = []
-        self.game_tree = {i: [] for i in range(8)}
-        self.checking_layer = 0
-        self.found_winning = False
+        self.checking_depth = 6
 
     def predict(self, board):
-        self.game_state = {row: board[row].copy() for row in board}
-        state = {
-            'state': board,
-            'actions': [],
-            'winnings': {'won': False,
-                         'lost': False}
-        }
-        self.game_tree[self.checking_layer].append(state)
-        self.check_layer()
-        # self.check_layer()
-        # print(datetime.now())
-        # self.check_layer()
-        # print(datetime.now())
-        # self.check_layer()
-        # print(datetime.now())
-        # self.check_layer()
-        # print(datetime.now())
-        # self.check_layer()
-        # print(datetime.now())
-        # self.check_layer()
-        # print(datetime.now())
+        best_move = 0
+        best_result = float('-inf')
+        for action in [6, 5, 4, 3, 2, 1, 0]:
+            game_state = {row: board[row].copy() for row in board}
+            current_player = 2
 
-        return randint(0, 6)
+            game_state, row = Connect4Game.update_game_state(game_state, action, current_player)
+            if row is None:
+                continue
 
-    def check_layer(self):
-        boards = self.game_tree[self.checking_layer]
-        self.checking_layer += 1
-        for board in boards:
-            self.generate_possible_moves(board)
-        self.current_player = int(not bool(self.current_player - 1)) + 1
+            result = self.minimax(game_state, {'x': action, 'y': row}, self.checking_depth, float('-inf'), float('inf'), False)
+            if result > best_result:
+                best_result = result
+                best_move = action
+            print(f'{action=}', f'{result}', f'{best_result=}', f'{best_move=}')
+        print()
+        # print(board)
+        # print(result, picked_move)
+        return best_move
 
-    def generate_possible_moves(self, board):
-        actions = [0, 1, 2, 3, 4, 5, 6]
-        for action in actions:
-            game_state = {row: board['state'][row].copy() for row in board['state']}
-            past_actions = board['actions'].copy()
-            for i in range(len(game_state) - 1, -1, -1):
-                if game_state[i][action] == 0:
-                    game_state[i][action] = self.current_player
+    def start_branch(self, board, action):
+        current_player = 2
 
-                    was_won = Connect4Game.check_for_winners(game_state, action, i)
-                    past_actions.append((action, self.current_player))
-                    state = {
-                        'state': game_state,
-                        'actions': past_actions,
-                        'winnings': {'won': was_won if self.current_player == self.player_number else False,
-                                     'lost': was_won if self.current_player != self.player_number else False}
-                    }
-                    self.game_tree[self.checking_layer].append(state)
+        game_state, row = Connect4Game.update_game_state(board, action, current_player)
+        if row is None:
+            return float('-inf')
+
+        result = self.minimax(game_state, {'x': action, 'y': row}, self.checking_depth, float('-inf'), float('inf'),
+                              False)
+        return result
+
+    def minimax(self, board, last_move, depth, alpha, beta, player):
+        game_won = Connect4Game.check_for_winners(board, last_move['x'], last_move['y'])
+        # print(last_move, f'{game_won=}', f'player={int(player) + 1}', f'player={player}')
+        # print(player)
+        if depth == 0 or game_won:
+            # print('depth 0')
+            if game_won and player is True:
+                return -1 - 0.1 * (self.checking_depth - depth)
+            elif game_won and player is False:
+                return 1 - 0.1 * (self.checking_depth - depth)
+            else:
+                return 0
+
+        if player:
+            max_state = float('-inf')
+            for action in [6, 5, 4, 3, 2, 1, 0]:
+                game_state = {row: board[row].copy() for row in board}
+                current_player = int(player) + 1
+
+                game_state, row = Connect4Game.update_game_state(game_state, action, current_player)
+                if row is None:
+                    continue
+
+                state = self.minimax(game_state, {'x': action, 'y': row}, depth - 1, alpha, beta, False)
+                max_state = max([max_state, state])
+
+                alpha = max([alpha, state])
+                if beta <= alpha:
                     break
+
+            return max_state
+
+        else:
+            min_state = float('+inf')
+            for action in [6, 5, 4, 3, 2, 1, 0]:
+                game_state = {row: board[row].copy() for row in board}
+                current_player = int(player) + 1
+
+                game_state, row = Connect4Game.update_game_state(game_state, action, current_player)
+                if row is None:
+                    continue
+
+                state = self.minimax(game_state, {'x': action, 'y': row}, depth - 1, alpha, beta, True)
+                min_state = min([min_state, state])
+
+                beta = min([beta, state])
+                if beta <= alpha:
+                    break
+
+            return min_state
 
 
 if __name__ == '__main__':
-    game_ai = Connect4AI()
-    game_ai.predict({0: [0, 0, 0, 0, 0, 0, 0],
-                     1: [0, 0, 0, 0, 0, 0, 0],
-                     2: [0, 0, 0, 0, 0, 0, 0],
-                     3: [0, 0, 0, 0, 0, 0, 0],
-                     4: [0, 0, 0, 2, 0, 0, 0],
-                     5: [0, 0, 0, 1, 1, 1, 0],
-                     6: [0, 2, 1, 1, 2, 0, 0]})
-    # pprint(game_ai.game_tree)
-    exit()
+    # game_ai = Connect4AI()
+    # game_ai.predict({0: [0, 0, 0, 0, 0, 0, 2],
+    #                  1: [0, 0, 0, 0, 0, 0, 1],
+    #                  2: [0, 0, 0, 0, 0, 0, 2],
+    #                  3: [0, 0, 0, 0, 2, 0, 2],
+    #                  4: [0, 0, 0, 1, 1, 0, 1],
+    #                  5: [0, 1, 1, 1, 2, 0, 2],
+    #                  6: [2, 1, 1, 1, 2, 0, 2]})
+    # # pprint(game_ai.game_tree)
+    # exit()
 
     width, height = 700, 700
     window = pyglet.window.Window(width, height)
