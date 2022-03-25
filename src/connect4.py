@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 import pyglet
 from pyglet import shapes
 from pyglet.window import mouse
@@ -93,6 +95,7 @@ class Connect4Game:
         elif self.use_ai:
             game_ai = Connect4AI()
             game_state = {row: self.game_state[row].copy() for row in self.game_state}
+            pprint(game_state)
             self.picked_column = game_ai.predict(game_state)
             self.move()
 
@@ -204,19 +207,31 @@ class Connect4Game:
 class Connect4AI:
     def __init__(self):
         self.checking_depth = 6
+        self.transposition_tables = {}
 
     def predict(self, board):
         best_move = 0
         best_result = float('-inf')
-        for action in [6, 5, 4, 3, 2, 1, 0]:
+        for action in [0, 1, 2, 3, 4, 5, 6]:
             game_state = {row: board[row].copy() for row in board}
             current_player = 2
 
             game_state, row = Connect4Game.update_game_state(game_state, action, current_player)
             if row is None:
                 continue
+                # return float('-inf')
 
-            result = self.minimax(game_state, {'x': action, 'y': row}, self.checking_depth, float('-inf'), float('inf'), False)
+            result = self.minimax(game_state, {'x': action, 'y': row}, self.checking_depth, float('-inf'), float('inf'),
+                                  False)
+            # self.start_branch()
+            # result = Process(target=self.start_branch, args=(game_state, action), daemon=True).start()
+            # current_player = 2
+            #
+            # game_state, row = Connect4Game.update_game_state(game_state, action, current_player)
+            # if row is None:
+            #     continue
+            #
+            # result = self.minimax(game_state, {'x': action, 'y': row}, self.checking_depth, float('-inf'), float('inf'), False)
             if result > best_result:
                 best_result = result
                 best_move = action
@@ -244,15 +259,15 @@ class Connect4AI:
         if depth == 0 or game_won:
             # print('depth 0')
             if game_won and player is True:
-                return -1 - 0.1 * (self.checking_depth - depth)
+                return -1 + 0.1 * (self.checking_depth - depth + 1)
             elif game_won and player is False:
-                return 1 - 0.1 * (self.checking_depth - depth)
+                return 1 - 0.1 * (self.checking_depth - depth + 1)
             else:
                 return 0
 
         if player:
             max_state = float('-inf')
-            for action in [6, 5, 4, 3, 2, 1, 0]:
+            for action in [0, 1, 2, 3, 4, 5, 6]:
                 game_state = {row: board[row].copy() for row in board}
                 current_player = int(player) + 1
 
@@ -271,7 +286,7 @@ class Connect4AI:
 
         else:
             min_state = float('+inf')
-            for action in [6, 5, 4, 3, 2, 1, 0]:
+            for action in [0, 1, 2, 3, 4, 5, 6]:
                 game_state = {row: board[row].copy() for row in board}
                 current_player = int(player) + 1
 
@@ -290,16 +305,18 @@ class Connect4AI:
 
 
 if __name__ == '__main__':
-    # game_ai = Connect4AI()
-    # game_ai.predict({0: [0, 0, 0, 0, 0, 0, 2],
-    #                  1: [0, 0, 0, 0, 0, 0, 1],
-    #                  2: [0, 0, 0, 0, 0, 0, 2],
-    #                  3: [0, 0, 0, 0, 2, 0, 2],
-    #                  4: [0, 0, 0, 1, 1, 0, 1],
-    #                  5: [0, 1, 1, 1, 2, 0, 2],
-    #                  6: [2, 1, 1, 1, 2, 0, 2]})
-    # # pprint(game_ai.game_tree)
-    # exit()
+    game_ai = Connect4AI()
+    print(datetime.now())
+    game_ai.predict({0: [0, 0, 0, 0, 0, 0, 0],
+ 1: [0, 0, 0, 0, 0, 0, 0],
+ 2: [0, 0, 0, 0, 0, 0, 0],
+ 3: [2, 0, 0, 0, 0, 0, 0],
+ 4: [1, 0, 0, 2, 0, 0, 0],
+ 5: [2, 1, 2, 1, 1, 1, 0],
+ 6: [2, 2, 1, 1, 1, 2, 0]})
+    print(datetime.now())
+
+    exit()
 
     width, height = 700, 700
     window = pyglet.window.Window(width, height)
