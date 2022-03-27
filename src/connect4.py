@@ -1,3 +1,4 @@
+import numpy
 import pyglet
 from pyglet import shapes
 from pyglet.window import mouse
@@ -6,11 +7,12 @@ from itertools import groupby
 from random import randint
 from functools import lru_cache
 from datetime import datetime
+from time import perf_counter
 from threading import Thread
 import json
 import sys
-from multiprocessing import Process
-
+from multiprocessing import Process, Manager
+import numpy as np
 from pprint import pprint
 
 
@@ -31,7 +33,7 @@ class Connect4Game:
 
         self.game_width = 7
         self.game_height = 7
-        self.game_state = {i: [0 for j in range(self.game_width)] for i in range(self.game_height)}
+        self.game_state = numpy.zeros(self.game_width * self.game_height)
 
         self.window = window_obj
         self.initiate_window_events()
@@ -103,12 +105,21 @@ class Connect4Game:
                 self.winner_screen()
 
     @staticmethod
-    def update_game_state(game_state, column, player):
-        for i in range(len(game_state) - 1, -1, -1):
-            if game_state[i][column] == 0:
-                game_state[i][column] = player
-                return game_state, i
+    def update_game_state(game_state, column_n, player):
+        start_col = 7 * column_n
+        end_col = 7 * (column_n + 1)
+        column = game_state[start_col:end_col]
 
+        for i in range(7):
+            if column[i] == 0:
+                column[i] = player
+                return game_state, i
+        print(game_state)
+        # for i in range(len(game_state) - 1, -1, -1):
+        #     if game_state[i][column] == 0:
+        #         game_state[i][column] = player
+        #         return game_state, i
+        #
         return game_state, None
 
     @classmethod
@@ -206,68 +217,76 @@ class Connect4Game:
 
 class Connect4AI:
     def __init__(self):
-        self.checking_depth = 11  # 16.0 s
+        self.checking_depth = 8
         self.transposition_tables = {}
+        self.winning_moves = {}
 
     def predict(self, board):
-        best_move = 0
-        best_result = float('-inf')
-        for action in [0, 1, 2, 3, 4, 5, 6]:
-            game_state = {row: board[row].copy() for row in board}
-            current_player = 2
+        with Manager() as manager:
+            results = manager.list()
+            winning_moves = manager.dict()
 
-            game_state, row = Connect4Game.update_game_state(game_state, action, current_player)
-            if row is None:
-                continue
-                # return float('-inf')
+            processes = []
+            for action in [3, 2, 1, 4, 5, 0, 6]:
+                processes.append(Process(target=self.start_branch, args=(board, action, results, winning_moves)))
+            for proces in processes:
+                proces.start()
+            for proces in processes:
+                proces.join()
 
-            result = self.minimax(game_state, {'x': action, 'y': row}, self.checking_depth, float('-inf'), float('inf'),
-                                  False)
-            # self.start_branch()
-            # result = Process(target=self.start_branch, args=(game_state, action), daemon=True).start()
-            # current_player = 2
-            #
-            # game_state, row = Connect4Game.update_game_state(game_state, action, current_player)
-            # if row is None:
-            #     continue
-            #
-            # result = self.minimax(game_state, {'x': action, 'y': row}, self.checking_depth, float('-inf'), float('inf'), False)
-            if result > best_result:
-                best_result = result
-                best_move = action
-            print(f'{action=}', f'{result}', f'{best_result=}', f'{best_move=}')
-        print()
-        # print(board)
-        # print(result, picked_move)
-        return best_move
+            results = sorted(list(results), key=lambda x: x[0], reverse=True)
+            print(winning_moves)
+            print(results)
 
-    def start_branch(self, board, action):
+            best_winning_move = float('inf')
+            if results[0][0] == 0 and results[-1][0] == 0:
+                for result in results:
+                    if result[0] == 0 and result[1] in winning_moves and winning_moves[result[1]] < best_winning_move:
+                        best_winning_move = result[0]
+            if type(best_winning_move) != float:
+                print('Picker move:', best_winning_move)
+                return best_winning_move
+            else:
+                print('Picker move:', results[0][1])
+                return results[0][1]
+            # return results[0][1]
+
+    def start_branch(self, board, action, results, winning_moves):
+        game_state = {row: board[row].copy() for row in board}
+        self.winning_moves = winning_moves
         current_player = 2
 
-        game_state, row = Connect4Game.update_game_state(board, action, current_player)
+        game_state, row = Connect4Game.update_game_state(game_state, action, current_player)
         if row is None:
             return float('-inf')
 
         result = self.minimax(game_state, {'x': action, 'y': row}, self.checking_depth, float('-inf'), float('inf'),
-                              False)
-        return result
+                              False, action)
+        # print(result)
+        # print(self.winning_moves)
+        winning_moves = self.winning_moves
+        results.append((result, action))
+        # return result
 
-    def minimax(self, board, last_move, depth, alpha, beta, player):
+    def minimax(self, board, last_move, depth, alpha, beta, player, first_move):
         game_won = Connect4Game.check_for_winners(board, last_move['x'], last_move['y'])
         # print(last_move, f'{game_won=}', f'player={int(player) + 1}', f'player={player}')
         # print(player)
         if depth == 0 or game_won:
             # print('depth 0')
             if game_won and player is True:
-                return -1 + 0.1 * (self.checking_depth - depth + 1)
+                return -1 + 0.1 * (self.checking_depth - depth)
             elif game_won and player is False:
-                return 1 - 0.1 * (self.checking_depth - depth + 1)
+                if first_move not in self.winning_moves or self.winning_moves[first_move] > self.checking_depth - depth:
+                    self.winning_moves[first_move] = self.checking_depth - depth
+                return 1 - 0.1 * (self.checking_depth - depth)
             else:
                 return 0
 
         if player:
             max_state = float('-inf')
-            for action in [0, 1, 2, 3, 4, 5, 6]:
+            moves = [0, 1, 2, 3, 4, 5, 6]
+            for action in sorted(moves, key=lambda x: pow(last_move['x'] - x, 2)):
                 game_state = {row: board[row].copy() for row in board}
                 current_player = int(player) + 1
 
@@ -278,7 +297,7 @@ class Connect4AI:
                 if str(game_state) in self.transposition_tables:
                     state = self.transposition_tables[str(game_state)]
                 else:
-                    state = self.minimax(game_state, {'x': action, 'y': row}, depth - 1, alpha, beta, False)
+                    state = self.minimax(game_state, {'x': action, 'y': row}, depth - 1, alpha, beta, False, first_move)
                     self.transposition_tables[str(game_state)] = state
                 max_state = max([max_state, state])
 
@@ -290,7 +309,8 @@ class Connect4AI:
 
         else:
             min_state = float('+inf')
-            for action in [0, 1, 2, 3, 4, 5, 6]:
+            moves = [0, 1, 2, 3, 4, 5, 6]
+            for action in sorted(moves, key=lambda x: pow(last_move['x'] - x, 2)):
                 game_state = {row: board[row].copy() for row in board}
                 current_player = int(player) + 1
 
@@ -298,7 +318,11 @@ class Connect4AI:
                 if row is None:
                     continue
 
-                state = self.minimax(game_state, {'x': action, 'y': row}, depth - 1, alpha, beta, True)
+                if str(game_state) in self.transposition_tables:
+                    state = self.transposition_tables[str(game_state)]
+                else:
+                    state = self.minimax(game_state, {'x': action, 'y': row}, depth - 1, alpha, beta, True, first_move)
+                    self.transposition_tables[str(game_state)] = state
                 min_state = min([min_state, state])
 
                 beta = min([beta, state])
@@ -309,18 +333,19 @@ class Connect4AI:
 
 
 if __name__ == '__main__':
-    game_ai = Connect4AI()
-    print(datetime.now())
-    game_ai.predict({0: [0, 0, 0, 0, 0, 0, 0],
- 1: [0, 0, 0, 0, 0, 0, 0],
- 2: [0, 0, 0, 0, 0, 0, 0],
- 3: [2, 0, 0, 0, 0, 0, 0],
- 4: [1, 0, 0, 2, 0, 0, 0],
- 5: [2, 1, 2, 1, 1, 1, 0],
- 6: [2, 2, 1, 1, 1, 2, 0]})
-    print(datetime.now())
-
-    exit()
+ #    game_ai = Connect4AI()
+ #    start = perf_counter()
+ #    game_ai.predict({0: [0, 0, 0, 0, 0, 0, 0],
+ # 1: [0, 0, 0, 0, 0, 0, 0],
+ # 2: [0, 0, 0, 0, 0, 0, 0],
+ # 3: [0, 0, 0, 0, 0, 0, 0],
+ # 4: [0, 0, 0, 2, 0, 0, 0],
+ # 5: [2, 2, 1, 1, 0, 0, 0],
+ # 6: [1, 1, 2, 1, 2, 0, 0]})
+ #    end = perf_counter()
+ #    print('Execution time:', end - start, 's')
+ #
+ #    exit()
 
     width, height = 700, 700
     window = pyglet.window.Window(width, height)
