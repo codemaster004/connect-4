@@ -115,3 +115,5 @@ if __name__ == '__main__':
     # end = perf_counter()
 
     # print('Execute time:', end - start)
+    my_dict = {}
+    my_dict.update({'hello': 'world'})

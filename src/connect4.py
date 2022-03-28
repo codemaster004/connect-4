@@ -1,18 +1,11 @@
-import numpy
 import pyglet
 from pyglet import shapes
 from pyglet.window import mouse
 
 from itertools import groupby
-from random import randint
-from functools import lru_cache
-from datetime import datetime
 from time import perf_counter
 from threading import Thread
-import json
-import sys
 from multiprocessing import Process, Manager
-import numpy as np
 from pprint import pprint
 
 
@@ -33,7 +26,7 @@ class Connect4Game:
 
         self.game_width = 7
         self.game_height = 7
-        self.game_state = numpy.zeros(self.game_width * self.game_height)
+        self.game_state = {i: [0 for j in range(self.game_width)] for i in range(self.game_height)}
 
         self.window = window_obj
         self.initiate_window_events()
@@ -105,21 +98,12 @@ class Connect4Game:
                 self.winner_screen()
 
     @staticmethod
-    def update_game_state(game_state, column_n, player):
-        start_col = 7 * column_n
-        end_col = 7 * (column_n + 1)
-        column = game_state[start_col:end_col]
-
-        for i in range(7):
-            if column[i] == 0:
-                column[i] = player
+    def update_game_state(game_state, column, player):
+        for i in range(len(game_state) - 1, -1, -1):
+            if game_state[i][column] == 0:
+                game_state[i][column] = player
                 return game_state, i
-        print(game_state)
-        # for i in range(len(game_state) - 1, -1, -1):
-        #     if game_state[i][column] == 0:
-        #         game_state[i][column] = player
-        #         return game_state, i
-        #
+
         return game_state, None
 
     @classmethod
@@ -127,26 +111,22 @@ class Connect4Game:
         # Slant growing
         b = new_y + new_x
         axis = [game_state[i][b - i] for i in range(b, -1, -1) if 0 <= i < 7 and b - i < 7]
-        # print(f'{axis=}')
         if cls.check_direction(axis) is not None:
             return True
 
         # Slant lowering
         b = new_y - new_x
-        # print(f'{axis=}')
         axis = [game_state[i][i - b] for i in range(b, len(game_state)) if 0 <= i < 7 and 0 <= i - b <= 6]
         if cls.check_direction(axis) is not None:
             return True
 
         # Horizontal
         row = game_state[new_y]
-        # print(f'{row=}')
         if cls.check_direction(row) is not None:
             return True
 
         # Vertical
         column = [game_state[row][new_x] for row in game_state]
-        # print(f'{column=}')
         if cls.check_direction(column) is not None:
             return True
 
@@ -170,14 +150,6 @@ class Connect4Game:
         )
         rectangle.opacity = 150
         self.rectangles.append(rectangle)
-        # self.labels.append(pyglet.text.Label(
-        #     'Game Won by Player: ',
-        #     font_size=36,
-        #     color=(255, 255, 255, 255),
-        #     x=100,
-        #     anchor_x='center',
-        #     y=100,
-        #     batch=self.batch))
 
     def draw_circle(self, col, row, color=(50, 51, 53)):
         x = self.circle_radius + self.circle_diameter * col + self.circle_spacing * col + self.circle_spacing * 0.5
@@ -217,7 +189,7 @@ class Connect4Game:
 
 class Connect4AI:
     def __init__(self):
-        self.checking_depth = 8
+        self.checking_depth = 10
         self.transposition_tables = {}
         self.winning_moves = {}
 
@@ -225,30 +197,46 @@ class Connect4AI:
         with Manager() as manager:
             results = manager.list()
             winning_moves = manager.dict()
+            # for move in [3, 2, 1, 4, 5, 0, 6]:
+            #     winning_moves[move] = {}
 
             processes = []
             for action in [3, 2, 1, 4, 5, 0, 6]:
-                processes.append(Process(target=self.start_branch, args=(board, action, results, winning_moves)))
+                processes.append(Thread(target=self.start_branch, args=(board, action, results, winning_moves)))
             for proces in processes:
                 proces.start()
             for proces in processes:
                 proces.join()
 
             results = sorted(list(results), key=lambda x: x[0], reverse=True)
-            print(winning_moves)
+            pprint(dict(winning_moves))
             print(results)
 
-            best_winning_move = float('inf')
-            if results[0][0] == 0 and results[-1][0] == 0:
-                for result in results:
-                    if result[0] == 0 and result[1] in winning_moves and winning_moves[result[1]] < best_winning_move:
-                        best_winning_move = result[0]
-            if type(best_winning_move) != float:
-                print('Picker move:', best_winning_move)
-                return best_winning_move
-            else:
-                print('Picker move:', results[0][1])
-                return results[0][1]
+            best_move = results[0][1]
+            best_win_lost_count = 0
+            bets_result = results[0][0]
+            for result in results:
+                if result[0] == bets_result and result[1] in winning_moves:
+                    data = winning_moves[result[1]]
+                    if 'wins' not in data or 'worst_lost' not in data or 'lost' not in data or 'best_winning' not in data:
+                        continue
+                    win_lost_count = (data['wins'] * data['worst_lost']) / (data['lost'] * data['best_winning'])
+                    if win_lost_count > best_win_lost_count:
+                        best_win_lost_count = win_lost_count
+                        best_move = result[1]
+
+            print(f'{best_move = }')
+            return best_move
+            # if results[0][0] == 0 and results[-1][0] == 0:
+            #     for result in results:
+            #         if result[0] == 0 and result[1] in winning_moves and winning_moves[result[1]] < best_winning_move:
+            #             best_winning_move = result[0]
+            # if type(best_winning_move) != float:
+            #     print('Picker move:', best_winning_move)
+            #     return best_winning_move
+            # else:
+            #     print('Picker move:', results[0][1])
+            #     return results[0][1]
             # return results[0][1]
 
     def start_branch(self, board, action, results, winning_moves):
@@ -262,26 +250,39 @@ class Connect4AI:
 
         result = self.minimax(game_state, {'x': action, 'y': row}, self.checking_depth, float('-inf'), float('inf'),
                               False, action)
-        # print(result)
-        # print(self.winning_moves)
         winning_moves = self.winning_moves
         results.append((result, action))
-        # return result
+
+    def evaluate_board(self, player, game_won, depth, first_move):
+        if game_won and player is True:
+            if first_move not in self.winning_moves:
+                self.winning_moves[first_move] = {}
+            if 'worst_lost' not in self.winning_moves[first_move] \
+                    or self.winning_moves[first_move]['worst_lost'] > self.checking_depth - depth:
+                win_history = dict(self.winning_moves[first_move])
+                win_history['worst_lost'] = self.checking_depth - depth
+                win_history['lost'] = win_history.setdefault('lost', 0) + 1
+                self.winning_moves[first_move] = win_history
+
+            return -1 + 0.1 * (self.checking_depth - depth)
+        elif game_won and player is False:
+            if first_move not in self.winning_moves:
+                self.winning_moves[first_move] = {}
+            if 'best_winning' not in self.winning_moves[first_move] \
+                    or self.winning_moves[first_move]['best_winning'] > self.checking_depth - depth:
+                win_history = dict(self.winning_moves[first_move])
+                win_history['best_winning'] = self.checking_depth - depth
+                win_history['wins'] = win_history.setdefault('wins', 0) + 1
+                self.winning_moves[first_move] = win_history
+
+            return 1 - 0.1 * (self.checking_depth - depth)
+        else:
+            return 0
 
     def minimax(self, board, last_move, depth, alpha, beta, player, first_move):
         game_won = Connect4Game.check_for_winners(board, last_move['x'], last_move['y'])
-        # print(last_move, f'{game_won=}', f'player={int(player) + 1}', f'player={player}')
-        # print(player)
         if depth == 0 or game_won:
-            # print('depth 0')
-            if game_won and player is True:
-                return -1 + 0.1 * (self.checking_depth - depth)
-            elif game_won and player is False:
-                if first_move not in self.winning_moves or self.winning_moves[first_move] > self.checking_depth - depth:
-                    self.winning_moves[first_move] = self.checking_depth - depth
-                return 1 - 0.1 * (self.checking_depth - depth)
-            else:
-                return 0
+            return self.evaluate_board(player, game_won, depth, first_move)
 
         if player:
             max_state = float('-inf')
@@ -333,19 +334,19 @@ class Connect4AI:
 
 
 if __name__ == '__main__':
- #    game_ai = Connect4AI()
- #    start = perf_counter()
- #    game_ai.predict({0: [0, 0, 0, 0, 0, 0, 0],
- # 1: [0, 0, 0, 0, 0, 0, 0],
- # 2: [0, 0, 0, 0, 0, 0, 0],
- # 3: [0, 0, 0, 0, 0, 0, 0],
- # 4: [0, 0, 0, 2, 0, 0, 0],
- # 5: [2, 2, 1, 1, 0, 0, 0],
- # 6: [1, 1, 2, 1, 2, 0, 0]})
- #    end = perf_counter()
- #    print('Execution time:', end - start, 's')
- #
- #    exit()
+#     game_ai = Connect4AI()
+#     start = perf_counter()
+#     game_ai.predict({0: [0, 0, 0, 0, 0, 0, 0],
+# 1: [0, 0, 0, 0, 0, 0, 0],
+# 2: [0, 0, 0, 0, 0, 0, 0],
+# 3: [0, 0, 0, 0, 0, 0, 0],
+# 4: [0, 2, 0, 2, 0, 0, 0],
+# 5: [2, 2, 1, 1, 0, 0, 0],
+# 6: [1, 1, 2, 1, 2, 0, 0]})
+#     end = perf_counter()
+#     print('Execution time:', end - start, 's')
+#
+#     exit()
 
     width, height = 700, 700
     window = pyglet.window.Window(width, height)
