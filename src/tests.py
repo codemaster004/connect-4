@@ -2,6 +2,7 @@ import multiprocessing
 from random import choice
 from time import perf_counter, sleep
 import numpy as np
+import requests
 
 
 def bools():
@@ -87,7 +88,7 @@ def np_board():
 
     # Diagonal /
     # n = 22
-    print(board)
+    # print(board)
     m = board & np.roll(board, 8)
     if np.any(m & np.roll(m, 16)):
         print('Found 4')
@@ -99,6 +100,143 @@ def np_board():
     # limit = b * (n % 6) + 1
     # print(board[n:limit:6])
     # print(board[n % 6:n:6])
+
+
+game_state = [
+    [0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0],
+    [2, 1, 0, 0, 0, 0, 0],
+    [1, 1, 1, 2, 1, 2, 0],
+    [2, 1, 2, 0, 0, 0, 0],
+    [2, 2, 1, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0]
+]
+
+top_row = len(game_state[0]) - 1
+end_col = len(game_state) - 1
+
+
+def is_winning(col, row, val):
+    # print(f'{v_max=} {v_min=}')
+
+    # print('diagonal /', max_main(col, row, val) - min_main(col, row, val) + 1)
+    v_max = max_main(col, row, val)
+    v_min = min_main(col, row, val)
+    if v_max - v_min + 1 >= 4:
+        print('Diagonal /')
+        return True
+
+    # print('diagonal \ ', max_anti(col, row, val) - min_anti(col, row, val) + 1)
+    v_max = max_anti(col, row, val)
+    v_min = min_anti(col, row, val)
+    print(f'{v_max=} {v_min=}')
+    if v_max - v_min + 1 >= 4:
+        print('Diagonal \\')
+        return True
+
+    # print('horizontal', max_row(col, row, val) - min_row(col, row, val))
+    v_max = max_row(col, row, val)
+    v_min = min_row(col, row, val)
+    if v_max - v_min + 1 >= 4:
+        print('Horizontal')
+        return True
+
+    # print('vertical', max_col(col, row, val) - min_col(col, row, val))
+    v_max = max_col(col, row, val)
+    v_min = min_col(col, row, val)
+    if v_max - v_min + 1 >= 4:
+        print('Vertical')
+        return True
+
+    return False
+
+
+def max_col(col, row, val):
+    if row == top_row:
+        return row
+
+    for i in range(row + 1, top_row + 1):
+        if game_state[col][i] != val:
+            return i - 1
+
+    return top_row
+
+
+def min_col(col, row, val):
+    if row == 0:
+        return row
+
+    for i in range(row - 1, -1, -1):
+        if game_state[col][i] != val:
+            return i + 1
+
+    return 0
+
+
+def max_row(col, row, val):
+    if col == end_col:
+        return col
+
+    for i in range(col + 1, end_col + 1):
+        if game_state[i][row] != val:
+            return i - 1
+
+    return end_col
+
+
+def min_row(col, row, val):
+    if col == 0:
+        return col
+
+    for i in range(col - 1, -1, -1):
+        if game_state[i][row] != val:
+            return i + 1
+
+    return 0
+
+
+def max_main(col, row, val):
+    if col == end_col or row == top_row:
+        return col
+
+    for i in range(1, min([end_col - col, top_row - row]) + 1):
+        if game_state[col + i][row + i] != val:
+            return col + i - 1
+
+    return col + min([end_col - col, top_row - row])
+
+
+def min_main(col, row, val):
+    if col == 0 or row == 0:
+        return col
+
+    for i in range(1, min([col, row]) + 1):
+        if game_state[col - i][row - i] != val:
+            return col - i + 1
+
+    return col - min([col, row])
+
+
+def max_anti(col, row, val):
+    if col == end_col or row == top_row:
+        return col
+
+    for i in range(1, min([end_col - col, row]) + 1):
+        if game_state[col + i][row - i] != val:
+            return col + i - 1
+
+    return col + min([end_col - col, row])
+
+
+def min_anti(col, row, val):
+    if col == 0 or row == 0:
+        return col
+
+    for i in range(1, min([col, top_row - row]) + 1):
+        if game_state[col - i][row + i] != val:
+            return col - i + 1
+
+    return col - min([col, top_row - row])
 
 
 if __name__ == '__main__':
@@ -117,3 +255,7 @@ if __name__ == '__main__':
     # print('Execute time:', end - start)
     my_dict = {}
     my_dict.update({'hello': 'world'})
+
+    # r = requests.post('http://127.0.0.1:5000/check_win', json={'board': {}, 'last_move': {'x': 0, 'y': 0}})
+    # print(r.text)
+    print(is_winning(col=4, row=2, val=2))
