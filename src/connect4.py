@@ -10,7 +10,7 @@ from pprint import pprint
 
 
 class Connect4Game:
-    def __init__(self, window_obj, batch_obj, log=False, use_ai=True):
+    def __init__(self, window_obj, batch_obj, width, height, log=False, use_ai=True):
         self.log = log
         self.use_ai = use_ai
 
@@ -24,9 +24,9 @@ class Connect4Game:
             1: (136, 136, 198)
         }
 
-        self.game_width = 7
-        self.game_height = 7
-        self.game_state = [[0 for j in range(self.game_width)] for i in range(self.game_height)]
+        self.game_width = width
+        self.game_height = height
+        self.game_state = [[0 for j in range(self.game_height)] for i in range(self.game_width)]
 
         self.window = window_obj
         self.initiate_window_events()
@@ -89,11 +89,16 @@ class Connect4Game:
         elif self.use_ai:
             game_ai = Connect4AI()
             game_state = [col.copy() for col in self.game_state]
+            # start = perf_counter()
             self.picked_column = game_ai.predict(game_state)
-            self.move()
+            # end = perf_counter()
+            # print('Execution time:', end - start, 's')
 
-            if self.game_won:
-                self.winner_screen()
+            if self.picked_column is None:
+                self.move()
+
+                if self.game_won:
+                    self.winner_screen()
 
     @staticmethod
     def update_game_state(game_state, column, player):
@@ -264,7 +269,7 @@ class Connect4Game:
         pyglet.app.run()
 
     def restart(self):
-        self.game_state = [[0 for j in range(self.game_width)] for i in range(self.game_height)]
+        self.game_state = [[0 for j in range(self.game_height)] for i in range(self.game_width)]
         self.game_won = False
         self.current_row = None
         self.picked_column = None
@@ -278,28 +283,33 @@ class Connect4Game:
 
 class Connect4AI:
     def __init__(self):
-        self.checking_depth = 15
+        self.checking_depth = 8
+        self.current_player = 2
         self.transposition_tables = {}
         self.winning_moves = {}
 
     def predict(self, board):
-        # print('power:', 7**(self.checking_depth + 1))
-        # print('other one:', 7 * ((1 - 7**(self.checking_depth + 1)) / (1 - 7)))
         with Manager() as manager:
             results = manager.list()
             winning_moves = manager.dict()
+            # results = []
+            # winning_moves = {}
 
             processes = []
             for action in [3, 2, 1, 4, 5, 0, 6]:
                 processes.append(Thread(target=self.start_branch, args=(board, action, results, winning_moves)))
+                # self.start_branch(board, action, results, winning_moves)
             for proces in processes:
                 proces.start()
             for proces in processes:
                 proces.join()
 
             results = sorted(list(results), key=lambda x: x[0], reverse=True)
-            # pprint(dict(winning_moves))
-            # print(results)
+            pprint(dict(winning_moves))
+            print(results)
+
+            if len(results) == 0:
+                return
 
             best_move = results[0][1]
             best_win_lost_count = 0
@@ -320,7 +330,7 @@ class Connect4AI:
     def start_branch(self, board, action, results, winning_moves):
         game_state = [col.copy() for col in board]
         self.winning_moves = winning_moves
-        current_player = 2
+        current_player = self.current_player
 
         game_state, row = Connect4Game.update_game_state(game_state, action, current_player)
         if row is None:
@@ -413,26 +423,27 @@ class Connect4AI:
 
 
 if __name__ == '__main__':
-    game_ai = Connect4AI()
-    start = perf_counter()
-    game_ai.predict([
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
-    ])
-    end = perf_counter()
-    print('Execution time:', end - start, 's')
+    # game_ai = Connect4AI()
+    # game_ai.checking_depth = 10
+    # start = perf_counter()
+    # game_ai.predict([
+    #     [0, 0, 0, 0, 0, 0, 0],
+    #     [0, 0, 0, 0, 0, 0, 0],
+    #     [0, 0, 0, 0, 0, 0, 0],
+    #     [0, 0, 0, 0, 0, 0, 0],
+    #     [0, 0, 0, 0, 0, 0, 0],
+    #     [0, 0, 0, 0, 0, 0, 0],
+    #     [0, 0, 0, 0, 0, 0, 0],
+    # ])
+    # end = perf_counter()
+    # print('Execution time:', end - start, 's')
+    #
+    # exit()
 
-    exit()
-
-    width, height = 700, 700
-    window = pyglet.window.Window(width, height)
+    width, height = 7, 7
+    window = pyglet.window.Window(width * 100, height * 100)
     batch = pyglet.graphics.Batch()
 
-    game = Connect4Game(window, batch, log=False, use_ai=True)
+    game = Connect4Game(window, batch, width, height, log=False, use_ai=True)
     game.create_board()
     game.start_window()
