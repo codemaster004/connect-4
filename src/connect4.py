@@ -2,11 +2,11 @@ import pyglet
 from pyglet import shapes
 from pyglet.window import mouse
 
-from itertools import groupby
 from time import perf_counter
 from threading import Thread
 from multiprocessing import Process, Manager
 from pprint import pprint
+import sqlite3
 
 
 class Connect4Game:
@@ -94,7 +94,7 @@ class Connect4Game:
             # end = perf_counter()
             # print('Execution time:', end - start, 's')
 
-            if self.picked_column is None:
+            if self.picked_column is not None:
                 self.move()
 
                 if self.game_won:
@@ -283,12 +283,24 @@ class Connect4Game:
 
 class Connect4AI:
     def __init__(self):
-        self.checking_depth = 8
+        self.checking_depth = 13
         self.current_player = 2
         self.transposition_tables = {}
         self.winning_moves = {}
 
+        self.con = sqlite3.connect('boards.db')
+        self.cur = self.con.cursor()
+
+    def get_board_from_db(self, board_in, player_in):
+        self.cur.execute(f'SELECT move FROM boards WHERE board = "{str(board_in)}" AND player = {player_in};')
+        return list(self.cur.fetchall())
+
     def predict(self, board):
+
+        query = self.get_board_from_db(board, self.current_player)
+        if query:
+            return int(query[0][0])
+
         with Manager() as manager:
             results = manager.list()
             winning_moves = manager.dict()
@@ -305,8 +317,8 @@ class Connect4AI:
                 proces.join()
 
             results = sorted(list(results), key=lambda x: x[0], reverse=True)
-            pprint(dict(winning_moves))
-            print(results)
+            # pprint(dict(winning_moves))
+            # print(results)
 
             if len(results) == 0:
                 return
