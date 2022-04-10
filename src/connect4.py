@@ -283,7 +283,7 @@ class Connect4Game:
 
 class Connect4AI:
     def __init__(self):
-        self.checking_depth = 13
+        self.checking_depth = 10
         self.current_player = 2
         self.transposition_tables = {}
         self.winning_moves = {}

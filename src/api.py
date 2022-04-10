@@ -24,5 +24,19 @@ def hello_world():
     return response
 
 
+@app.route('/predict', methods=['POST'])
+def predict():
+    print(request.json)
+
+    board = request.json['board']
+    depth = request.json['depth']
+
+    game_ai = Connect4AI()
+    game_ai.checking_depth = depth
+    prediction = game_ai.predict(board)
+
+    return jsonify({'status': 'OK'})
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001)
